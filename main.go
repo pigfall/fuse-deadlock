@@ -98,14 +98,14 @@ type delayFileReader struct {
 
 // Override the Open.
 func (n *loopbackNode) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+	fmt.Println("opening")
+	time.Sleep(time.Hour)
+	fmt.Println("open done")
 	fh, fuseFlags, errno = n.LoopbackNode.Open(ctx, flags)
 	return &delayFileReader{FileHandle: fh}, fuseFlags, errno
 }
 
 func (r *delayFileReader) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
-	fmt.Println("reading")
-	time.Sleep(time.Hour)
-	fmt.Println("read done")
 	return r.FileHandle.(fs.FileReader).Read(ctx, dest, off)
 }
 
