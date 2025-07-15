@@ -5,7 +5,7 @@
 ## Operations steps
 ```
 CGO_ENABLED=0 go build -o loopback .
-sudo docker build -t tmp:latest
+sudo docker build -t tmp:latest .
 sudo docker run --name=tmp  --rm --privileged  -it -v /dev/fuse:/dev/fuse tmp:latest 
 # in another terminal
 docker exec -it tmp sh
