@@ -19,8 +19,10 @@ import (
 func main() {
 	var backendDir string
 	var mp string
+	var runFuseInChildProcess bool
 	flag.StringVar(&backendDir, "backend", "", "backend directory")
 	flag.StringVar(&mp, "mountpoint", "", "mounpoint path")
+	flag.BoolVar(&runFuseInChildProcess, "run-fuse-in-child-process", false, "Run fuse in child process")
 	flag.Parse()
 
 	if backendDir == "" {
@@ -28,6 +30,40 @@ func main() {
 	}
 	if mp == "" {
 		panic("must provide mp")
+	}
+
+	if runFuseInChildProcess {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+
+		// The process is the init process. Reap the children processes.
+		go func() {
+			for {
+				time.Sleep(time.Second)
+				ReapChild()
+			}
+		}()
+
+		execPath, err := os.Executable()
+		if err != nil {
+			panic(err)
+		}
+
+		// Run fuse in a child process.
+		cmd := exec.Command(
+			execPath,
+			"--mountpoint="+mp,
+			"--backend="+backendDir,
+		)
+		cmd.Env = append(os.Environ(), "FUSE_FS=test")
+		if err := cmd.Start(); err != nil {
+			panic(err)
+		}
+		cmd.Process.Release()
+		fmt.Println("Runed fuse as child process")
+		<-sig
+		cmd.Process.Kill()
+		return
 	}
 
 	rootNode, err := NewLoopbackRoot(backendDir)
@@ -132,4 +168,19 @@ func NewLoopbackRoot(rootPath string) (*loopbackNode, error) {
 	rootNode := root.NewNode(root, nil, "", &st)
 	root.RootNode = rootNode
 	return rootNode.(*loopbackNode), nil
+}
+
+// ReapChild reaps terminated child processes and returns their PID and exit status.
+// It returns true if a child was reaped, false if no child was ready.
+func ReapChild() (pid int, status syscall.WaitStatus, err error) {
+	// Wait4 with WNOHANG to non-blockingly check for terminated children
+	pid, err = syscall.Wait4(-1, &status, syscall.WNOHANG, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	if pid == 0 {
+		// No child was ready
+		return 0, 0, nil
+	}
+	return pid, status, nil
 }
